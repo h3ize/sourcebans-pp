@@ -1,29 +1,3 @@
-// *************************************************************************
-//  This file is part of SourceBans++.
-//
-//  Copyright (C) 2014-2024 SourceBans++ Dev Team <https://github.com/sbpp>
-//
-//  SourceBans++ is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU General Public License as published by
-//  the Free Software Foundation, per version 3 of the License.
-//
-//  SourceBans++ is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-//  GNU General Public License for more details.
-//
-//  You should have received a copy of the GNU General Public License
-//  along with SourceBans++. If not, see <http://www.gnu.org/licenses/>.
-//
-//  This file is based off work(s) covered by the following copyright(s):
-//
-//   SourceSleuth 1.3 fix
-//   Copyright (C) 2013-2015 ecca
-//   Licensed under GNU GPL version 3, or later.
-//   Page: <https://forums.alliedmods.net/showthread.php?p=1818793> - <https://github.com/ecca/SourceMod-Plugins>
-//
-// *************************************************************************
-
 #pragma semicolon 1
 #pragma newdecls required
 
@@ -149,6 +123,9 @@ public void OnClientPostAdminCheck(int client)
 		char steamid[32];
 		GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
 
+		// Replace ':' with '_' in the steamid
+		ReplaceString(steamid, sizeof(steamid), ":", "_", false);
+
 		if (g_cVar_bypass.BoolValue && CheckCommandAccess(client, "sleuth_admin", ADMFLAG_BAN, false))
 		{
 			return;
@@ -179,72 +156,86 @@ public void OnClientPostAdminCheck(int client)
 
 public void SQL_CheckHim(Database db, DBResultSet results, const char[] error, DataPack dataPack)
 {
-	int client;
-	char steamid[32], IP[32];
+    int client;
+    char steamid[32], IP[32];
 
-	client = GetClientOfUserId(ReadPackCell(dataPack));
-	dataPack.ReadString(steamid, sizeof(steamid));
-	dataPack.ReadString(IP, sizeof(IP));
-	delete dataPack;
+    client = GetClientOfUserId(ReadPackCell(dataPack));
+    dataPack.ReadString(steamid, sizeof(steamid));
+    dataPack.ReadString(IP, sizeof(IP));
+    delete dataPack;
 
-	if (results == null)
-	{
-		LogError("SourceSleuth: Database query error: %s", error);
-		return;
-	}
+    if (results == null)
+    {
+        LogError("SourceSleuth: Database query error: %s", error);
+        return;
+    }
 
-	if (results.FetchRow())
-	{
-		int TotalBans = results.RowCount;
+    if (results.FetchRow())
+    {
+        int TotalBans = results.RowCount;
 
-		if (TotalBans > g_cVar_bansAllowed.IntValue)
-		{
-			switch (g_cVar_actions.IntValue)
-			{
-				case LENGTH_ORIGINAL:
-				{
-					int length = results.FetchInt(6);
-					int time = length / 60;
+        if (TotalBans > g_cVar_bansAllowed.IntValue)
+        {
+            char firstBannedSteamID[64]; // Increased buffer size
+            results.FetchString(2, firstBannedSteamID, sizeof(firstBannedSteamID)); // Assuming 'authid' is the 3rd column
 
-					BanPlayer(client, time);
-				}
-				case LENGTH_CUSTOM:
-				{
-					int time = g_cVar_banduration.IntValue;
-					BanPlayer(client, time);
-				}
-				case LENGTH_DOUBLE:
-				{
-					int length = results.FetchInt(6);
+            // Log the fetched Steam ID for debugging
+            LogMessage("Fetched Steam ID: %s", firstBannedSteamID);
 
-					int time = 0;
+            switch (g_cVar_actions.IntValue)
+            {
+                case LENGTH_ORIGINAL:
+                {
+                    int length = results.FetchInt(6);
+                    int time = length / 60;
 
-					if (length != 0)
-					{
-						time = length / 60 * 2;
-					}
+                    BanPlayer(client, time, firstBannedSteamID);
+                    return;
+                }
+                case LENGTH_CUSTOM:
+                {
+                    int time = g_cVar_banduration.IntValue;
+                    BanPlayer(client, time, firstBannedSteamID);
+                    return;
+                }
+                case LENGTH_DOUBLE:
+                {
+                    int length = results.FetchInt(6);
 
-					BanPlayer(client, time);
-				}
-				case LENGTH_NOTIFY:
-				{
-					/* Notify Admins when a client with an ip on the bans list connects */
-					PrintToAdmins("%s%t", PREFIX, "sourcesleuth_admintext", client, steamid, IP);
-				}
-				case LENGTH_KICK:
-				{
-					KickClient(client, "%s%t", PREFIX, "sourcesleuth_kicktext");
-				}
-			}
-		}
-	}
+                    int time = 0;
+
+                    if (length != 0)
+                    {
+                        time = length / 60 * 2;
+                    }
+
+                    BanPlayer(client, time, firstBannedSteamID);
+                    return;
+                }
+                case LENGTH_NOTIFY:
+                {
+                    /* Notify Admins when a client with an ip on the bans list connects */
+                    PrintToAdmins("%s%t", PREFIX, "sourcesleuth_admintext", client, steamid, IP);
+                    return;
+                }
+                case LENGTH_KICK:
+                {
+                    KickClient(client, "%s%t", PREFIX, "sourcesleuth_kicktext");
+                    return;
+                }
+            }
+        }
+    }
 }
 
-stock void BanPlayer(int client, int time)
+stock void BanPlayer(int client, int time, const char[] firstBannedSteamID)
 {
-	char Reason[255];
-	Format(Reason, sizeof(Reason), "%s%T", PREFIX, "sourcesleuth_banreason", client);
-	SBPP_BanPlayer(0, client, time, Reason);
+    // Log the Steam ID being used in the ban reason for debugging
+    LogMessage("Banning player with Steam ID: %s", firstBannedSteamID);
+
+    char Reason[255];
+    Format(Reason, sizeof(Reason), "Alternative Account | Main is %s", firstBannedSteamID);
+    SBPP_BanPlayer(0, client, time, Reason);
 }
 
 void PrintToAdmins(const char[] format, any ...)
