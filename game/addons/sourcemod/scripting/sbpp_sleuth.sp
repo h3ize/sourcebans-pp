@@ -178,7 +178,6 @@ public void SQL_CheckHim(Database db, DBResultSet results, const char[] error, D
 			char firstBannedSteamID[64];
 			results.FetchString(2, firstBannedSteamID, sizeof(firstBannedSteamID));
 
-			// Log the fetched Steam ID for debugging
 			LogMessage("Fetched Steam ID: %s", firstBannedSteamID);
 
 			switch (g_cVar_actions.IntValue)
@@ -229,7 +228,6 @@ public void SQL_CheckHim(Database db, DBResultSet results, const char[] error, D
 
 stock void BanPlayer(int client, int time, const char[] firstBannedSteamID)
 {
-	// Log the Steam ID being used in the ban reason for debugging
 	LogMessage("Banning player with Steam ID: %s", firstBannedSteamID);
 
 	char Reason[255];
@@ -239,7 +237,7 @@ stock void BanPlayer(int client, int time, const char[] firstBannedSteamID)
 	}
 	else
 	{
-		Format(Reason, sizeof(Reason), "[SourceSleuth] Duplicate account");
+		Format(Reason, sizeof(Reason), "[Source Sleuth] Duplicate account");
 	}
 	SBPP_BanPlayer(0, client, time, Reason);
 }
